@@ -43,6 +43,8 @@ export interface PercentSale {
     image: string;
     price: number;
     categoryId: string;
+    createdAt: number;
+    editedAt: number;
     standard?: number;
     subCategory?: string;
     refImages?: string[];
@@ -67,14 +69,16 @@ export interface PercentSale {
   export interface PatternItem {
     id: string;
     name: string;
-    patternId: string;
+    patternId: "cabin"| "cuaTang" | "sanCabin" | "tranGia" | "tayVin" | "hib" | "hoaVanInox" |"vatLieu" ;
     image: string;
-    sections?: Section []
+    sections?: Section [];
+    info?: Info;
+    subId?: string;
   }
   
   export interface Section {
     type: "paragraph" | "subheader" | "bulletList" | "image" | "space" | "header"
-    content?: string [] 
+    content: string [] 
   }
   
   export interface Post {
@@ -83,7 +87,7 @@ export interface PercentSale {
     type: "news" | "services" | "aboutUs" | "projects";
     thumbnail: string;
     author?: string;
-    createAt?: string;
-    editedAt?: string;
+    createdAt?: number;
+    editedAt?: number;
     sections?: Section []
   }

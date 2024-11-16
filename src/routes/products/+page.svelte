@@ -13,8 +13,9 @@
 
 	export let data: PageData;
 
+	let password = '';
 	let dialogOpen = false;
-	let currentCategoryId: string | null = null;
+	let currentCategoryId: string = '';
 	let inputImage: HTMLInputElement;
 	let inputPhotos: HTMLInputElement;
 	let standardProduct = true;
@@ -37,15 +38,18 @@
 		protectionRail: '',
 		bollard: ''
 	};
+	let subCategory = 'elite';
+	let isPosting = false;
 
-	function createPostSection() {
+	function createProductSection() {
 		const state = writable<Product>({
 			id: '',
 			name: '',
 			image: '',
 			price: 0,
 			categoryId: '',
-			subCategory: '',
+			createdAt: 0,
+			editedAt: 0,
 			standard: 0,
 			refImages: [],
 			info: {},
@@ -53,12 +57,48 @@
 		});
 
 		function deleteTrigger(node: HTMLElement) {
-			function handleClick(e: Event) {
+			async function handleClick(e: Event) {
+				if (!password) {
+					alert('Vui lòng nhập key');
+					return;
+				}
 				e.preventDefault();
 				if (!!node.dataset.productid && !!node.dataset.categoryid) {
-					removeProduct(node.dataset.productid, node.dataset.categoryid);
-					console.log(node.dataset.productid);
-					console.log(node.dataset.categoryid);
+					const productItem = data.productsByCategory[node.dataset.categoryid].find(
+						(product) => product.id === node.dataset.productid
+					);
+					if (productItem) {
+						try {
+							let imageList: string[] = [];
+							if (productItem.refImages) {
+								imageList = [...productItem.refImages];
+							}
+							if (productItem.image) {
+								imageList.push(productItem.image);
+							}
+
+							const res = await fetch(
+								`https://viet_tri_api.mkt-viettri.workers.dev/api/products/${node.dataset.productid}`,
+								{
+									method: 'DELETE',
+									headers: {
+										Authorization: `${password}`
+									}
+								}
+							);
+							if (res.ok) {
+								if (imageList.length > 0) {
+									const images = imageList.map((image) => image.split('/').pop()) as string[];
+									await Promise.all(images.map((image) => deleteImage(image)));
+								}
+								removeProduct(node.dataset.productid, node.dataset.categoryid);
+							} else {
+								alert('Sai mật khẩu hoặc Server không hoạt động');
+							}
+						} catch (error) {
+							alert('Có lỗi xảy ra, vui lòng thử lại');
+						}
+					}
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -87,11 +127,14 @@
 
 		function createPostTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
+				if (!password) {
+					alert('Vui lòng nhập key');
+					return;
+				}
 				e.preventDefault();
 				if (!!node.dataset.categoryid) {
 					dialogOpen = true;
 					currentCategoryId = node.dataset.categoryid;
-					console.log(node.dataset.categoryid);
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -107,35 +150,35 @@
 				e.preventDefault();
 				e.stopPropagation();
 				if (!!node.dataset.key && !!node.dataset.type) {
-				  const res = await fetch(
-				    `https://viet_tri_api.mkt-viettri.workers.dev/api/uploadFile/signedUrl?state=delete&delkey=${node.dataset.key}`,
-				    {
-				      method: "GET"
-				    }
-				  );
-				  const resData = await res.json() as any;
-				  if (resData.ok) {
-				    if(node.dataset.type === 'photos'){
-						//@ts-ignore
-				      inputPhotos.value = null;
-				      photosList[node.dataset.key].state = "deleting";
-				      await fetch(resData.delUrl, {
-				        method: "DELETE",
-				      });
-				      delete photosList[node.dataset.key];
-				      photosList = { ...photosList };
-				    }
-					if(node.dataset.type === 'thumbnail'){
-						//@ts-ignore
-						inputImage.value = null;
-						thumbnailList[node.dataset.key].state = "deleting";
-						await fetch(resData.delUrl, {
-							method: "DELETE",
-						});
-						delete thumbnailList[node.dataset.key];
-						thumbnailList = { ...thumbnailList };
+					const res = await fetch(
+						`https://viet_tri_api.mkt-viettri.workers.dev/api/uploadFile/signedUrl?state=delete&delkey=${node.dataset.key}`,
+						{
+							method: 'GET'
+						}
+					);
+					const resData = (await res.json()) as any;
+					if (resData.ok) {
+						if (node.dataset.type === 'photos') {
+							//@ts-ignore
+							inputPhotos.value = null;
+							photosList[node.dataset.key].state = 'deleting';
+							await fetch(resData.delUrl, {
+								method: 'DELETE'
+							});
+							delete photosList[node.dataset.key];
+							photosList = { ...photosList };
+						}
+						if (node.dataset.type === 'thumbnail') {
+							//@ts-ignore
+							inputImage.value = null;
+							thumbnailList[node.dataset.key].state = 'deleting';
+							await fetch(resData.delUrl, {
+								method: 'DELETE'
+							});
+							delete thumbnailList[node.dataset.key];
+							thumbnailList = { ...thumbnailList };
+						}
 					}
-				  }
 				}
 			};
 			node.addEventListener('click', handleClick);
@@ -155,7 +198,22 @@
 	const {
 		element: { deleteTrigger, editTrigger, createPostTrigger, removePhotoButton },
 		states: { state }
-	} = createPostSection();
+	} = createProductSection();
+
+	async function deleteImage(image: string) {
+		const res = await fetch(
+			`https://viet_tri_api.mkt-viettri.workers.dev/api/uploadFile/signedUrl?state=delete&delkey=${image}`,
+			{
+				method: 'GET'
+			}
+		);
+		const resData = (await res.json()) as any;
+		if (resData.ok) {
+			await fetch(resData.delUrl, {
+				method: 'DELETE'
+			});
+		}
+	}
 
 	const removeProduct = (productId: string, categoryId: string) => {
 		data.productsByCategory[categoryId] = data.productsByCategory[categoryId].filter(
@@ -165,8 +223,24 @@
 		data.productsByCategory = { ...data.productsByCategory };
 	};
 
+	const addProduct = (product: Product) => {
+		data.productsByCategory[product.categoryId].push(product);
+		// Force Svelte to update by reassigning the object
+		data.productsByCategory = { ...data.productsByCategory };
+	};
+
 	const formatCategoryName = (category: string) => {
-		return category.replace(/([A-Z])/g, ' $1').trim();
+		const mapping: Record<string, string> = {
+			thangTaiKhach: 'Thang tải khách',
+			thangTaiHang: 'Thang tải hàng',
+			thangTaiOTo: 'Thang tải ô tô',
+			thangThucPham: 'Thang thực phẩm',
+			thangQuanSat: 'Thang quan sát',
+			thangTaiGiuongBenh: 'Thang tải giường bệnh',
+			thangTaiRac: 'Thang tải rác',
+			toiTaiHang: 'Tỏi tải hàng'
+		};
+		return mapping[category] || category;
 	};
 
 	async function uploadFile(
@@ -192,7 +266,6 @@
 					});
 					photosList[fileName].state = 'url';
 					photosList[fileName].url = resData.objUrl;
-					console.log(photosList[fileName]);
 				} catch (error) {
 					delete photosList[fileName];
 					photosList = { ...photosList };
@@ -216,7 +289,6 @@
 					});
 					thumbnailList[fileName].state = 'url';
 					thumbnailList[fileName].url = resData.objUrl;
-					console.log(thumbnailList[fileName]);
 				} catch (error) {
 					delete thumbnailList[fileName];
 					thumbnailList = { ...thumbnailList };
@@ -225,9 +297,125 @@
 		}
 	}
 
+	async function handleSubmit() {
+		if ($state.name) {
+			$state.id = $state.name;
+		}
+		if (Object.keys(thumbnailList).length > 0) {
+			const imageName = Object.keys(thumbnailList)[0];
+			const url = `https://pub-4076f91e2c23424590fb9b7fe99e41b5.r2.dev/${imageName}`;
+			$state.image = url;
+		} else {
+			$state.image = '';
+		}
+		$state.categoryId = currentCategoryId;
+		if (currentCategoryId === 'thangTaiKhach') {
+			$state.subCategory = subCategory;
+		}
+		if (standardProduct) {
+			$state.standard = 1;
+		} else {
+			$state.standard = 0;
+		}
+		if (salesAmount > 0) {
+			$state.sale = {
+				type: 'percent',
+				percent: salesAmount
+			};
+		}
+		if (Object.keys(photosList).length > 0) {
+			$state.refImages = Object.keys(photosList).map(
+				(key) => `https://pub-4076f91e2c23424590fb9b7fe99e41b5.r2.dev/${key}`
+			);
+		} else {
+			$state.refImages = [];
+		}
+		$state.info = elevatorInfo;
+		if (!isPosting) {
+			try {
+				$state.createdAt = Date.now();
+				$state.editedAt = Date.now();
+				isPosting = true;
+				const body = { ...$state };
+				const res = await fetch(
+					`https://viet_tri_api.mkt-viettri.workers.dev/api/products/create`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `${password}`
+						},
+						body: JSON.stringify(body)
+					}
+				);
+				if (res.ok) {
+					addProduct(body);
+					resetState();
+				} else {
+					const existPhotos = [...Object.keys(photosList), ...Object.keys(thumbnailList)];
+					if (existPhotos.length > 0) {
+						await Promise.all(existPhotos.map((key) => deleteImage(key)));
+					}
+					resetState();
+					alert('Sai mật khẩu hoặc Sản phẩm đã tồn tại');
+				}
+			} catch (error) {
+				const existPhotos = [...Object.keys(photosList), ...Object.keys(thumbnailList)];
+				if (existPhotos.length > 0) {
+					await Promise.all(existPhotos.map((key) => deleteImage(key)));
+				}
+				resetState();
+				alert('Có lỗi xảy ra, vui lòng thử lại');
+			}
+		}
+	}
+
+	function resetState() {
+		$state = {
+			id: '',
+			name: '',
+			image: '',
+			price: 0,
+			categoryId: '',
+			createdAt: 0,
+			editedAt: 0,
+			standard: 0,
+			refImages: [],
+			info: {},
+			techInfo: {}
+		};
+		dialogOpen = false;
+		currentCategoryId = '';
+		//@ts-ignore
+		inputImage.value = null;
+		//@ts-ignore
+		inputPhotos.value = null;
+		standardProduct = true;
+		salesAmount = 0;
+		photosList = {};
+		thumbnailList = {};
+		elevatorInfo = {
+			ceiling: '',
+			frontWall: '',
+			sideWall: '',
+			backWall: '',
+			handrail: '',
+			cabinDoor: '',
+			lobby: '',
+			floors: '',
+			gfnf: '',
+			cabinFloor: '',
+			cabinDoorType: '',
+			floorDoor: '',
+			protectionRail: '',
+			bollard: ''
+		};
+		isPosting = false;
+	}
+
 	async function handlePhotosChange(param: string) {
 		if (param === 'thumbnail') {
-			if (inputImage.files) {
+			if (inputImage && inputImage.files) {
 				for (const [key, photo] of Object.entries(inputImage.files)) {
 					const fileName = `${crypto.randomUUID()}-${photo.name}`;
 					uploadFile(photo, fileName, 'thumbnail');
@@ -235,7 +423,7 @@
 			}
 		}
 		if (param === 'photos') {
-			if (inputPhotos.files) {
+			if (inputPhotos && inputPhotos.files) {
 				for (const [key, photo] of Object.entries(inputPhotos.files)) {
 					const fileName = `${crypto.randomUUID()}-${photo.name}`;
 					uploadFile(photo, fileName, 'photos');
@@ -246,6 +434,10 @@
 </script>
 
 <div class="container mx-auto px-4 py-8">
+	<div class="flex items-center space-x-2 py-2">
+		<span class=" font-medium text-slate-500">Nhập key :</span>
+		<input class="rounded-md border px-2 py-1 outline-none" type="password" bind:value={password} />
+	</div>
 	{#each data.categories as categoryId}
 		<section class="mb-12">
 			<div class="flex items-start space-x-4">
@@ -296,6 +488,8 @@
 			<Dialog.Header>
 				<Dialog.Title>THÊM SẢN PHẨM</Dialog.Title>
 				<Dialog.Description></Dialog.Description>
+			</Dialog.Header>
+			<form on:submit={async () => await handleSubmit()} action="">
 				<div class="flex flex-col gap-1">
 					<div class="flex items-center space-x-2">
 						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Mã sản phẩm * :</span
@@ -378,7 +572,7 @@
 					</div>
 					<div class="flex items-center justify-between space-x-4">
 						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Loại thang * :</span>
-						<select bind:value={$state.categoryId} class="block h-[32px] w-full rounded-md border">
+						<select bind:value={currentCategoryId} class="block h-[32px] w-full rounded-md border">
 							<option value="thangTaiKhach">Thang tải khách</option>
 							<option value="thangTaiHang">Thang tải hàng</option>
 							<option value="thangTaiOTo">Thang tải ô tô</option>
@@ -389,15 +583,17 @@
 							<option value="toiTaiHang">Tỏi tải hàng</option>
 						</select>
 					</div>
-					<div class="flex items-center justify-between space-x-4">
-						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân khúc :</span>
-						<select bind:value={$state.subCategory} class="block h-[32px] w-full rounded-md border">
-							<option value="elite">Elite</option>
-							<option value="luxury">Luxury</option>
-							<option value="premium">Premium</option>
-							<option value="panorama">Panorama</option>
-						</select>
-					</div>
+					{#if currentCategoryId === 'thangTaiKhach'}
+						<div class="flex items-center justify-between space-x-4">
+							<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân khúc :</span>
+							<select bind:value={subCategory} class="block h-[32px] w-full rounded-md border">
+								<option value="elite">Elite</option>
+								<option value="luxury">Luxury</option>
+								<option value="premium">Premium</option>
+								<option value="panorama">Panorama</option>
+							</select>
+						</div>
+					{/if}
 					<div class="flex items-center space-x-2">
 						<span class="text-sm font-medium text-slate-500">Danh sách hình ảnh :</span>
 						<input
@@ -647,7 +843,12 @@
 						</Collapsible.Root>
 					</div>
 				</div>
-			</Dialog.Header>
+				<div class="mt-2 flex justify-end">
+					<button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-white"
+						>Đăng sản phẩm</button
+					>
+				</div>
+			</form>
 		</Dialog.Content>
 	</Dialog.Root>
 </div>
