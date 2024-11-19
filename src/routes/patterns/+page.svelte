@@ -279,7 +279,6 @@
 	}
 
 	async function deleteImage(image: string) {
-		
 		const res = await fetch(
 			`https://viet_tri_api.mkt-viettri.workers.dev/api/uploadFile/signedUrl?state=delete&delkey=${image}`,
 			{
@@ -330,7 +329,6 @@
 					resetState();
 					alert('Sai mật khẩu hoặc Mẫu đã tồn tại');
 				}
-				
 			} catch (error) {
 				if (Object.keys(thumbnailList).length > 0) {
 					await Promise.all(Object.keys(thumbnailList).map((key) => deleteImage(key)));
@@ -480,183 +478,208 @@
 							<option value="vatLieu">Vật liệu</option>
 						</select>
 					</div>
-					<div class="flex items-center space-x-2">
-						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân loại :</span>
-						<input
-							type="text"
-							bind:value={$state.subId}
-							placeholder="Phân loại"
-							class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-						/>
-					</div>
+					{#if currentCategoryId === 'cabin' || currentCategoryId === 'cuaTang' || currentCategoryId === 'sanCabin'}
+						<div class="flex items-center space-x-2">
+							<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân loại * :</span
+							>
+							<select
+								bind:value={$state.subId}
+								class="block h-[32px] w-full rounded-md border outline-none"
+							>
+								{#if currentCategoryId === 'cabin'}
+									<option value="cabinTieuChuanP">Thang tải khách tiêu chuẩn</option>
+									<option value="cabinTuyChonP">Thang tải khách tuỳ chọn</option>
+									<option value="cabinO">Thang quan sát</option>
+									<option value="cabinC">Thang tải ô tô</option>
+									<option value="cabinF">Thang tải hàng</option>
+									<option value="cabinD">Thang thực phẩm</option>
+									<option value="cabinH">Thang tải giường bệnh</option>
+								{/if}
+								{#if currentCategoryId === 'cuaTang'}
+									<option value="baoCheBanHep">Bao che bản hẹp</option>
+									<option value="baoCheBanRongKHT">Bao che bản rộng không hiển thị</option>
+									<option value="baoCheBanRongCHT">Bao che bản rộng có hiển thị</option>
+								{/if}
+								{#if currentCategoryId === 'sanCabin'}
+									<option value="sanGranite">Sàn granite</option>
+									<option value="sanToleGan">Sàn tole gân</option>
+									<option value="sanInox">Sàn Inox</option>
+								{/if}
+							</select>
+						</div>
+					{/if}
 				</div>
 				<div class="mt-2 flex flex-col gap-1">
-					<Collapsible.Root>
-						<Collapsible.Trigger>
-							<div
-								class=" flex items-center space-x-2 rounded-md border px-2 py-1 hover:bg-slate-100"
-							>
-								<span class=" text-sm font-semibold text-slate-600">Thông tin sản phẩm</span>
-								<ChevronsDown class="h-6 w-6 text-blue-600" />
-							</div>
-						</Collapsible.Trigger>
-						<Collapsible.Content>
-							<div class="flex flex-col gap-1 border bg-slate-100 px-2">
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Cửa tầng chính :</span
-									>
-									<input
-										type="text"
-										id="lobby"
-										name="lobby"
-										bind:value={elevatorInfo.lobby}
-										placeholder="Cửa tầng chính"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
+					{#if currentCategoryId === 'cabin'}
+						<Collapsible.Root>
+							<Collapsible.Trigger>
+								<div
+									class=" flex items-center space-x-2 rounded-md border px-2 py-1 hover:bg-slate-100"
+								>
+									<span class=" text-sm font-semibold text-slate-600">Thông tin sản phẩm</span>
+									<ChevronsDown class="h-6 w-6 text-blue-600" />
 								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Cửa tầng khác :</span
-									>
-									<input
-										type="text"
-										id="floors"
-										name="floors"
-										bind:value={elevatorInfo.floors}
-										placeholder="Cửa tầng khác"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
+							</Collapsible.Trigger>
+							<Collapsible.Content>
+								<div class="flex flex-col gap-1 border bg-slate-100 px-2">
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Cửa tầng chính :</span
+										>
+										<input
+											type="text"
+											id="lobby"
+											name="lobby"
+											bind:value={elevatorInfo.lobby}
+											placeholder="Cửa tầng chính"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Cửa tầng khác :</span
+										>
+										<input
+											type="text"
+											id="floors"
+											name="floors"
+											bind:value={elevatorInfo.floors}
+											placeholder="Cửa tầng khác"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Cửa cabin :</span
+										>
+										<input
+											type="text"
+											id="cabinDoor"
+											name="cabinDoor"
+											bind:value={elevatorInfo.cabinDoor}
+											placeholder="Cửa cabin"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Bao che :</span
+										>
+										<input
+											type="text"
+											id="gfnf"
+											name="gfnf"
+											bind:value={elevatorInfo.gfnf}
+											placeholder="Bao che"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500">Trần :</span>
+										<input
+											type="text"
+											id="ceiling"
+											name="ceiling"
+											bind:value={elevatorInfo.ceiling}
+											placeholder="Trần"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Sàn cabin :</span
+										>
+										<input
+											type="text"
+											id="cabinFloor"
+											name="cabinFloor"
+											bind:value={elevatorInfo.cabinFloor}
+											placeholder="Sàn cabin"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Vách trước :</span
+										>
+										<input
+											type="text"
+											id="frontWall"
+											name="frontWall"
+											bind:value={elevatorInfo.frontWall}
+											placeholder="Vách trước"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Vách sau :</span
+										>
+										<input
+											type="text"
+											id="backWall"
+											name="backWall"
+											bind:value={elevatorInfo.backWall}
+											placeholder="Vách sau"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Vách hông :</span
+										>
+										<input
+											type="text"
+											id="sideWall"
+											name="sideWall"
+											bind:value={elevatorInfo.sideWall}
+											placeholder="Vách hông"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Tay vịn :</span
+										>
+										<input
+											type="text"
+											id="handrail"
+											name="handrail"
+											bind:value={elevatorInfo.handrail}
+											placeholder="Tay vịn"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Nẹp bảo vệ :</span
+										>
+										<input
+											type="text"
+											id="protectionRail"
+											name="protectionRail"
+											bind:value={elevatorInfo.protectionRail}
+											placeholder="Nẹp bảo vệ"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
+									<div class="flex items-center justify-between space-x-4">
+										<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+											>Trụ bảo vệ :</span
+										>
+										<input
+											type="text"
+											id="bollard"
+											name="bollard"
+											bind:value={elevatorInfo.bollard}
+											placeholder="Trụ bảo vệ"
+											class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+										/>
+									</div>
 								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Cửa cabin :</span
-									>
-									<input
-										type="text"
-										id="cabinDoor"
-										name="cabinDoor"
-										bind:value={elevatorInfo.cabinDoor}
-										placeholder="Cửa cabin"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500">Bao che :</span
-									>
-									<input
-										type="text"
-										id="gfnf"
-										name="gfnf"
-										bind:value={elevatorInfo.gfnf}
-										placeholder="Bao che"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500">Trần :</span>
-									<input
-										type="text"
-										id="ceiling"
-										name="ceiling"
-										bind:value={elevatorInfo.ceiling}
-										placeholder="Trần"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Sàn cabin :</span
-									>
-									<input
-										type="text"
-										id="cabinFloor"
-										name="cabinFloor"
-										bind:value={elevatorInfo.cabinFloor}
-										placeholder="Sàn cabin"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Vách trước :</span
-									>
-									<input
-										type="text"
-										id="frontWall"
-										name="frontWall"
-										bind:value={elevatorInfo.frontWall}
-										placeholder="Vách trước"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Vách sau :</span
-									>
-									<input
-										type="text"
-										id="backWall"
-										name="backWall"
-										bind:value={elevatorInfo.backWall}
-										placeholder="Vách sau"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Vách hông :</span
-									>
-									<input
-										type="text"
-										id="sideWall"
-										name="sideWall"
-										bind:value={elevatorInfo.sideWall}
-										placeholder="Vách hông"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500">Tay vịn :</span
-									>
-									<input
-										type="text"
-										id="handrail"
-										name="handrail"
-										bind:value={elevatorInfo.handrail}
-										placeholder="Tay vịn"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Nẹp bảo vệ :</span
-									>
-									<input
-										type="text"
-										id="protectionRail"
-										name="protectionRail"
-										bind:value={elevatorInfo.protectionRail}
-										placeholder="Nẹp bảo vệ"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-								<div class="flex items-center justify-between space-x-4">
-									<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-										>Trụ bảo vệ :</span
-									>
-									<input
-										type="text"
-										id="bollard"
-										name="bollard"
-										bind:value={elevatorInfo.bollard}
-										placeholder="Trụ bảo vệ"
-										class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-									/>
-								</div>
-							</div>
-						</Collapsible.Content>
-					</Collapsible.Root>
+							</Collapsible.Content>
+						</Collapsible.Root>
+					{/if}
 				</div>
 				<div class="mt-4 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-white">

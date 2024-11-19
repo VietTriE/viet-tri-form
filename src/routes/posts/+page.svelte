@@ -366,7 +366,7 @@
 	}
 
 	async function handleSubmit() {
-		if ($state.title) {
+		if ($state.title && !$state.id) {
 			const id = crypto.randomUUID();
 			const postId = `${typePrefix[currentPostType]}${id}`;
 			$state.id = postId;
@@ -495,6 +495,19 @@
 			</Dialog.Header>
 			<form on:submit={async () => await handleSubmit()} action="">
 				<div class="flex flex-col gap-2">
+					{#if currentPostType === 'services'}
+						<div class="flex items-center space-x-2">
+							<span class="whitespace-nowrap text-sm font-medium text-slate-500"
+								>ID bài viết * :</span
+							>
+							<input
+								type="text"
+								bind:value={$state.id}
+								placeholder="ID bài viết"
+								class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
+							/>
+						</div>
+					{/if}
 					<div class="flex items-center space-x-2">
 						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Tiêu đề * :</span>
 						<input
