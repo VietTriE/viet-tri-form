@@ -4,7 +4,12 @@
 	import CirclePlus from 'lucide-svelte/icons/circle-plus';
 	import Pencil from 'lucide-svelte/icons/pencil';
 	import Image from 'lucide-svelte/icons/image';
-	import ChevronDown from 'lucide-svelte/icons/chevron-down';
+	import X from 'lucide-svelte/icons/x';
+	import Pilcrow from 'lucide-svelte/icons/pilcrow';
+	import Heading1 from 'lucide-svelte/icons/heading-1';
+	import Heading2 from 'lucide-svelte/icons/heading-2';
+	import List from 'lucide-svelte/icons/list';
+	import Space from 'lucide-svelte/icons/space';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { writable } from 'svelte/store';
 	import type { Post, Section } from '$lib/types.js';
@@ -12,7 +17,6 @@
 
 	export let data: PageData;
 
-	let password = '';
 	let dialogOpen = false;
 	let currentPostType: 'news' | 'services' | 'aboutUs' | 'projects' = 'news';
 	let inputSectionImage: HTMLInputElement;
@@ -21,6 +25,8 @@
 	let showSectionDropdown = false;
 	let sections: Section[] = [];
 	let isPosting = false;
+	let activeTab: 'news' | 'services' | 'aboutUs' | 'projects' = 'news';
+	let insertAtIndex = -1;
 
 	const sectionTypes = [
 		{ type: 'paragraph', label: 'Đoạn văn' },
@@ -51,10 +57,6 @@
 
 		function deleteTrigger(node: HTMLElement) {
 			async function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
 				e.preventDefault();
 				if (!!node.dataset.postid && !!node.dataset.posttype) {
 					const postItem = data.postsByType[node.dataset.posttype].find(
@@ -70,12 +72,13 @@
 									}
 								}
 							}
+							const authKey = localStorage.getItem('authKey');
 							const res = await fetch(
 								`https://viet_tri_api.mkt-viettri.workers.dev/api/posts/${node.dataset.postid}`,
 								{
 									method: 'DELETE',
 									headers: {
-										Authorization: `${password}`
+										Authorization: `${authKey}`
 									}
 								}
 							);
@@ -103,8 +106,28 @@
 			function handleClick(e: Event) {
 				e.preventDefault();
 				if (!!node.dataset.postid && !!node.dataset.posttype) {
-					console.log(node.dataset.postid);
-					console.log(node.dataset.posttype);
+					const postItem = data.postsByType[node.dataset.posttype].find(
+						(post) => post.id === node.dataset.postid
+					);
+					if (postItem) {
+						sections = postItem.sections || [];
+						state.update(s => ({
+							...postItem
+						}));
+						
+						currentPostType = postItem.type;
+						dialogOpen = true;
+						
+						if (postItem.thumbnail) {
+							const fileKey = postItem.thumbnail.split('/').pop() || '';
+							thumbnailList = {
+								[fileKey]: { 
+									url: postItem.thumbnail, 
+									state: 'url' 
+								}
+							};
+						}
+					}
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -117,10 +140,7 @@
 
 		function createPostTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
+
 				e.preventDefault();
 				if (!!node.dataset.posttype && node.dataset.posttype in typePrefix) {
 					dialogOpen = true;
@@ -206,10 +226,19 @@
 				content: type === 'space' ? [] : ['']
 			};
 
-			sections = [...sections, newSection];
+			if (insertAtIndex >= 0 && insertAtIndex <= sections.length) {
+				sections = [
+					...sections.slice(0, insertAtIndex),
+					newSection,
+					...sections.slice(insertAtIndex)
+				];
+				insertAtIndex = -1;
+			} else {
+				sections = [...sections, newSection];
+			}
+
 			showSectionDropdown = false;
 
-			// Focus the new section after render
 			if (type === 'image') {
 				inputSectionImage.click();
 			} else {
@@ -346,7 +375,7 @@
 		$state = {
 			id: '',
 			title: '',
-			type: 'news',
+			type: activeTab,
 			thumbnail: '',
 			sections: [],
 			createdAt: 0,
@@ -354,7 +383,7 @@
 		};
 
 		dialogOpen = false;
-		currentPostType = 'news';
+		currentPostType = activeTab;
 		//@ts-ignore
 		inputSectionImage.value = null;
 		//@ts-ignore
@@ -364,6 +393,11 @@
 		sections = [];
 		isPosting = false;
 	}
+
+	// function generateCustomShortId(prefix = 'VTEN', length = 6) {
+	// 	const randomPart = Math.random().toString(36).substr(2, length);
+	// 	return `${prefix}${randomPart}`;
+	// }
 
 	async function handleSubmit() {
 		if ($state.title && !$state.id) {
@@ -378,22 +412,50 @@
 			$state.thumbnail = url;
 		}
 		$state.sections = sections;
-		$state.createdAt = Date.now();
+		
+		// For new posts, set created time
+		if (!$state.createdAt) {
+			$state.createdAt = Date.now();
+		}
+		
+		// Always update edited time
 		$state.editedAt = Date.now();
+		
 		if (!isPosting) {
 			try {
 				isPosting = true;
 				const body = { ...$state };
-				const res = await fetch(`https://viet_tri_api.mkt-viettri.workers.dev/api/posts/create`, {
-					method: 'POST',
+				const authKey = localStorage.getItem('authKey');
+				
+				// Determine if we're updating an existing post or creating a new one
+				const isUpdate = data.postsByType[currentPostType].some(post => post.id === $state.id);
+				const endpoint = isUpdate
+					? `https://viet_tri_api.mkt-viettri.workers.dev/api/posts/${$state.id}`
+					: `https://viet_tri_api.mkt-viettri.workers.dev/api/posts/create`;
+				
+				const method = isUpdate ? 'PUT' : 'POST';
+				
+				const res = await fetch(endpoint, {
+					method,
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: `${password}`
+						Authorization: `${authKey}`
 					},
 					body: JSON.stringify(body)
 				});
+				
 				if (res.ok) {
-					addPost(body);
+					if (isUpdate) {
+						// Update existing post in the local data
+						const postIndex = data.postsByType[currentPostType].findIndex(post => post.id === $state.id);
+						if (postIndex !== -1) {
+							data.postsByType[currentPostType][postIndex] = body;
+							data.postsByType = { ...data.postsByType };
+						}
+					} else {
+						// Add new post
+						addPost(body);
+					}
 					resetState();
 				} else {
 					let existPhotos = [...Object.keys(thumbnailList)];
@@ -427,99 +489,120 @@
 			}
 		}
 	}
+
+	function autoResize(node: HTMLTextAreaElement) {
+		const resize = () => {
+			node.style.height = 'auto';
+			node.style.height = node.scrollHeight + 'px';
+		};
+
+		// Set initial height
+		setTimeout(resize, 0);
+
+		// Resize on input
+		node.addEventListener('input', resize);
+
+		// Resize when content changes through binding
+		const observer = new MutationObserver(resize);
+		observer.observe(node, { characterData: true, subtree: true });
+
+		return {
+			update: resize,
+			destroy: () => {
+				node.removeEventListener('input', resize);
+				observer.disconnect();
+			}
+		};
+	}
 </script>
 
 <div class="container mx-auto px-4 py-8">
-	<div class="flex items-center space-x-2 py-2">
-		<span class=" font-medium text-slate-500">Nhập key :</span>
-		<input class="rounded-md border px-2 py-1 outline-none" type="password" bind:value={password} />
-	</div>
-	{#each data.postTypes as postType}
-		<section class="mb-12">
-			<div class="flex items-start space-x-4">
-				<h2 class="mb-6 text-2xl font-bold">{formatPostType(postType)}</h2>
-				<div
-					use:createPostTrigger
-					data-posttype={postType}
-					class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
+
+	<!-- Create a tab navigation -->
+	<div class="mb-6 border-b">
+		<div class="-mb-px flex flex-wrap">
+			{#each data.postTypes as postType}
+				<button
+					class="border-b-2 px-4 py-2 text-xl font-medium transition-colors duration-200 {activeTab ===
+					postType
+						? 'border-blue-500 text-blue-600'
+						: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+					on:click={() => (activeTab = postType as 'news' | 'services' | 'aboutUs' | 'projects')}
 				>
-					<CirclePlus class="h-6 w-6" />
-					<span class="font-semibold">THÊM BÀI VIẾT</span>
-				</div>
-			</div>
-			<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-				{#each data.postsByType[postType] || [] as post (post.id)}
-					<div class="relative flex flex-col overflow-hidden rounded-lg border bg-white shadow-md">
-						<div class="absolute right-0 top-0 flex items-center gap-1">
-							<div
-								use:editTrigger
-								data-postid={post.id}
-								data-posttype={post.type}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Pencil class="h-6 w-6 text-slate-600" />
-							</div>
-							<div
-								use:deleteTrigger
-								data-postid={post.id}
-								data-posttype={post.type}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Trash2 class="h-6 w-6 text-slate-600" />
-							</div>
-						</div>
-						<img class="h-48 w-full object-cover" src={post.thumbnail} alt={post.title} />
-						<div class="p-4">
-							<h3 class="text-lg font-semibold text-slate-700">{post.title}</h3>
-							{#if post.sections && post.sections.length > 0}
-								{#each post.sections.slice(0, 1) as section}
-									{#if section.type === 'paragraph' && section.content}
-										<p class="mt-2 line-clamp-3 text-sm text-slate-500">
-											{section.content.join(' ')}
-										</p>
-									{/if}
-								{/each}
-							{/if}
-						</div>
+					{formatPostType(postType)}
+				</button>
+			{/each}
+		</div>
+	</div>
+
+	<!-- Display only the active tab content -->
+	{#each data.postTypes as postType}
+		{#if activeTab === postType}
+			<section class="mb-12 mt-12">
+				<div class="flex w-full items-center justify-between space-x-4">
+					<h2 class="mb-6 text-3xl font-bold">{formatPostType(postType)}</h2>
+					<div
+						use:createPostTrigger
+						data-posttype={postType}
+						class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
+					>
+						<CirclePlus class="h-6 w-6" />
+						<span class="font-semibold">THÊM BÀI VIẾT</span>
 					</div>
-				{/each}
-			</div>
-		</section>
+				</div>
+				<div class="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+					{#each data.postsByType[postType] || [] as post (post.id)}
+						<div
+							class="relative flex flex-col overflow-hidden rounded-lg border bg-white shadow-md"
+						>
+							<div class="absolute right-0 top-0 flex items-center gap-1">
+								<div
+									use:editTrigger
+									data-postid={post.id}
+									data-posttype={post.type}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Pencil class="h-6 w-6 text-slate-600" />
+								</div>
+								<div
+									use:deleteTrigger
+									data-postid={post.id}
+									data-posttype={post.type}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Trash2 class="h-6 w-6 text-slate-600" />
+								</div>
+							</div>
+							<img class="h-48 w-full object-cover" src={post.thumbnail} alt={post.title} />
+							<div class="p-4">
+								<h3 class="text-lg font-semibold text-slate-700">{post.title}</h3>
+								{#if post.sections && post.sections.length > 0}
+									{#each post.sections.slice(0, 1) as section}
+										{#if section.type === 'paragraph' && section.content}
+											<p class="mt-2 line-clamp-3 text-sm text-slate-500">
+												{section.content.join(' ')}
+											</p>
+										{/if}
+									{/each}
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/if}
 	{/each}
 
 	<Dialog.Root bind:open={dialogOpen}>
-		<Dialog.Content class="max-h-screen overflow-y-scroll">
-			<Dialog.Header>
-				<Dialog.Title>THÊM BÀI VIẾT</Dialog.Title>
-				<Dialog.Description />
-			</Dialog.Header>
-			<form on:submit={async () => await handleSubmit()} action="">
-				<div class="flex flex-col gap-2">
-					{#if currentPostType === 'services'}
-						<div class="flex items-center space-x-2">
-							<span class="whitespace-nowrap text-sm font-medium text-slate-500"
-								>ID bài viết * :</span
-							>
-							<input
-								type="text"
-								bind:value={$state.id}
-								placeholder="ID bài viết"
-								class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-							/>
-						</div>
-					{/if}
-					<div class="flex items-center space-x-2">
-						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Tiêu đề * :</span>
-						<input
-							type="text"
-							bind:value={$state.title}
-							placeholder="Tiêu đề bài viết"
-							class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 shadow-sm outline-none"
-							required
-						/>
+		<Dialog.Content class="h-screen w-full overflow-y-scroll">
+			<div >
+				<div class="flex flex-col items-center gap-2">
+					<div class="p-6">
+						<span class="text-2xl font-bold">
+							{$state.id ? 'SỬA BÀI VIẾT' : 'THÊM BÀI VIẾT'} - {formatPostType(currentPostType)}
+						</span>
 					</div>
-					<div class="flex items-center space-x-2">
-						<span class="text-sm font-medium text-slate-500">Thumbnail * :</span>
+					<div>
 						<input
 							class="hidden"
 							type="file"
@@ -534,51 +617,71 @@
 							bind:this={inputSectionImage}
 							on:change={async () => await handleImageChange('section')}
 						/>
-						<button
-							class=" flex items-center space-x-2 rounded-md border p-1 hover:bg-slate-200"
-							on:click|preventDefault={() => {
-								inputImage.click();
-							}}
-						>
-							<Image class="h-[20px] w-[20px] text-green-600" />
-							<span class=" text-sm font-medium text-slate-500">Photo</span>
-						</button>
 					</div>
-					<div class="flex flex-wrap gap-2 px-4 py-2">
-						{#each Object.entries(thumbnailList) as [key, file]}
-							<div class="">
-								{#if file.state === 'loading' || file.state === 'deleting'}
-									<div class="relative h-[200px] w-[266px] rounded-md bg-slate-100">
-										<div
-											class=" absolute inset-0 top-0 ml-[50%] flex w-full -translate-x-[50%] items-center justify-center space-x-2"
-										>
-											<Loader class=" h-6 w-6 animate-spin text-slate-400" />
-											<span class=" text-lg font-medium text-slate-400">{file.state}</span>
-										</div>
+					<div
+						class=" relative flex w-full flex-col items-center space-x-4 rounded-md border md:flex-row"
+					>
+						<div class="flex flex-col items-center">
+							{#if Object.keys(thumbnailList).length > 0}
+								{#each Object.entries(thumbnailList) as [key, file]}
+									<div class="">
+										{#if file.state === 'loading' || file.state === 'deleting'}
+											<div class="relative aspect-video h-[200px] rounded-md bg-slate-100">
+												<div
+													class=" absolute inset-0 top-0 ml-[50%] flex w-full -translate-x-[50%] items-center justify-center space-x-2"
+												>
+													<Loader class=" h-6 w-6 animate-spin text-slate-400" />
+													<span class=" text-lg font-medium text-slate-400">{file.state}</span>
+												</div>
+											</div>
+										{/if}
+										{#if file.state === 'url'}
+											<div class=" relative aspect-video h-[200px]">
+												<img
+													class="h-full w-full rounded-sm border object-cover object-center"
+													height={200}
+													src={file.url}
+													alt={key}
+												/>
+												<button
+													class=" absolute right-0 top-0 z-10 mr-1 mt-1 rounded-md bg-white p-1 hover:bg-slate-200"
+													data-key={key}
+													data-type="thumbnail"
+													use:removePhotoButton
+												>
+													<Trash2 class="h-6 w-6 text-slate-700" />
+												</button>
+											</div>
+										{/if}
 									</div>
-								{/if}
-								{#if file.state === 'url'}
-									<div class="relative h-full">
-										<img
-											class="aspect-[4/3] h-[200px] rounded-sm border object-contain object-center"
-											height={200}
-											src={file.url}
-											alt={key}
-										/>
+								{/each}
+							{:else}
+								<div
+									class="flex aspect-video h-[200px] items-center justify-center bg-gray-100 text-center"
+								>
+									<div>
 										<button
-											class=" absolute right-0 top-0 z-10 mr-1 mt-1 rounded-md bg-white p-1 hover:bg-slate-200"
-											data-key={key}
-											data-type="thumbnail"
-											use:removePhotoButton
+											class=" flex h-full w-full items-center space-x-2 rounded-md border px-4 py-2 hover:bg-slate-200"
+											on:click|preventDefault={() => {
+												inputImage.click();
+											}}
 										>
-											<Trash2 class="h-6 w-6 text-slate-700" />
+											<Image class="h-[30px] w-[30px] text-gray-400" />
+											<span class="text-2xl font-semibold text-gray-300"> Thumbnail </span>
 										</button>
 									</div>
-								{/if}
-							</div>
-						{/each}
+								</div>
+							{/if}
+						</div>
+						<textarea
+							bind:value={$state.title}
+							placeholder="Tiêu đề bài viết..."
+							class=" h-[100px] w-full px-8 py-4 text-2xl font-semibold text-gray-800 outline-none placeholder:text-slate-400"
+							required
+						>
+						</textarea>
 					</div>
-					<div class="flex items-center justify-between space-x-4">
+					<!-- <div class="flex items-center justify-between space-x-4">
 						<span class="whitespace-nowrap text-sm font-medium text-slate-500"
 							>Phân loại bài đăng * :</span
 						>
@@ -588,9 +691,11 @@
 							<option value="aboutUs">Về chúng tôi</option>
 							<option value="projects">Dự án</option>
 						</select>
-					</div>
-					<span class="whitespace-nowrap font-medium text-slate-500">Nội dung bài viết :</span>
-					<div class="relative flex flex-col gap-4 rounded-md bg-slate-100 p-4">
+					</div> -->
+					<!-- <span class="whitespace-nowrap font-medium text-slate-500">Nội dung bài viết :</span> -->
+					<div
+						class="relative flex min-h-[400px] w-full flex-col gap-2 rounded-md border px-6 pb-[140px] pt-10"
+					>
 						{#if sections.length > 0}
 							{#each sections as section, index (index)}
 								<div class="group relative">
@@ -598,41 +703,42 @@
 										<textarea
 											data-section-index={index}
 											bind:value={section.content[0]}
-											class="min-h-[100px] w-full rounded-md border p-3 outline-none focus:ring-2 focus:ring-blue-500"
+											use:autoResize
+											class="min-h-[24px] w-full overflow-hidden px-8 py-0 leading-tight outline-none"
 											placeholder="Nhập nội dung đoạn văn..."
 										></textarea>
 									{:else if section.type === 'header'}
-										<input
+										<textarea
 											data-section-index={index}
-											type="text"
-											class="w-full rounded-md border p-3 text-xl font-bold outline-none focus:ring-2 focus:ring-blue-500"
+											class="min-h-[36px] w-full resize-none overflow-hidden border-none px-8 py-0 text-3xl font-bold leading-tight outline-none"
 											bind:value={section.content[0]}
 											placeholder="Nhập tiêu đề lớn..."
-										/>
+											use:autoResize
+										></textarea>
 									{:else if section.type === 'subheader'}
-										<input
+										<textarea
 											data-section-index={index}
-											type="text"
-											class="w-full rounded-md border p-3 text-xl font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+											class="min-h-[32px] w-full resize-none overflow-hidden border-none px-8 py-0 text-2xl font-semibold leading-tight outline-none"
 											bind:value={section.content[0]}
 											placeholder="Nhập tiêu đề nhỏ..."
-										/>
+											use:autoResize
+										></textarea>
 									{:else if section.type === 'bulletList'}
-										<div class="flex flex-col gap-2">
+										<div class="flex flex-col gap-0 px-8">
 											{#each section.content || [''] as item, itemIndex}
-												<div class="flex items-center gap-2">
-													<span class="text-xl">•</span>
-													<input
+												<div class="mb-0 flex items-start gap-2">
+													<span class="mt-0 text-xl">•</span>
+													<textarea
 														data-section-index={index}
-														type="text"
-														class="flex-1 rounded-md border p-2 outline-none focus:ring-2 focus:ring-blue-500"
+														class="min-h-[24px] flex-1 resize-none overflow-hidden border-none py-0 leading-tight outline-none"
 														bind:value={item}
 														placeholder="Nhập mục danh sách..."
-													/>
+														use:autoResize
+													></textarea>
 												</div>
 											{/each}
 											<button
-												class="self-start text-blue-500 hover:text-blue-600"
+												class="ml-6 mt-0 self-start text-blue-500 hover:text-blue-600"
 												on:click|preventDefault={() => {
 													if (section.content) {
 														section.content = [...section.content, ''];
@@ -644,12 +750,12 @@
 											</button>
 										</div>
 									{:else if section.type === 'space'}
-										<div class="h-8"></div>
+										<div class="h-10"></div>
 									{:else if section.type === 'image'}
-										<div class="relative w-full">
+										<div class="relative w-fit">
 											<img
-												class="object-contain"
-												height={100}
+												class=" max-h-[500px] object-contain"
+												height={500}
 												src={section.content[0]}
 												alt={section.content[0]}
 											/>
@@ -659,61 +765,176 @@
 												data-type={`section-${index}`}
 												use:removePhotoButton
 											>
-												<Trash2 class="h-6 w-6 text-slate-700" />
+												<X class="h-6 w-6 text-slate-700" />
 											</button>
 										</div>
 									{/if}
 
-									<!-- Delete button -->
-									{#if section.type !== 'image'}
+									<!-- Section controls - appear on hover -->
+									<div
+										class="absolute left-0 top-0 -ml-12 flex items-center rounded-md bg-slate-200 opacity-0 transition-opacity group-hover:opacity-100"
+									>
+										<!-- Move Up button - disabled for first item -->
 										<button
-											class="absolute -left-8 top-2 opacity-0 transition-opacity group-hover:opacity-100"
+											aria-label="Move Up"
+											class="p-1 text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+											disabled={index === 0}
 											on:click={() => {
-												sections.splice(index, 1);
-												sections = [...sections];
+												if (index > 0) {
+													// Swap with previous section
+													const newSections = [...sections];
+													[newSections[index - 1], newSections[index]] = [
+														newSections[index],
+														newSections[index - 1]
+													];
+													sections = newSections;
+												}
 											}}
 										>
-											<Trash2 class="h-5 w-5 text-red-500 hover:text-red-600" />
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												width="16"
+												height="16"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+											>
+												<path d="M18 15l-6-6-6 6" />
+											</svg>
 										</button>
-									{/if}
+
+										<!-- Move Down button - disabled for last item -->
+										<button
+											aria-label="Move Down"
+											class="p-1 text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-500"
+											disabled={index === sections.length - 1}
+											on:click={() => {
+												if (index < sections.length - 1) {
+													// Swap with next section
+													const newSections = [...sections];
+													[newSections[index], newSections[index + 1]] = [
+														newSections[index + 1],
+														newSections[index]
+													];
+													sections = newSections;
+												}
+											}}
+										>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												width="16"
+												height="16"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+											>
+												<path d="M6 9l6 6 6-6" />
+											</svg>
+										</button>
+
+										<!-- Delete button -->
+										{#if section.type !== 'image'}
+											<button
+												aria-label="Delete"
+												class="p-1 text-gray-500 hover:text-red-600"
+												on:click={() => {
+													sections.splice(index, 1);
+													sections = [...sections];
+												}}
+											>
+												<svg
+													xmlns="http://www.w3.org/2000/svg"
+													width="16"
+													height="16"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+												>
+													<path d="M3 6h18" />
+													<path
+														d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
+													/>
+												</svg>
+											</button>
+										{/if}
+									</div>
 								</div>
 							{/each}
 						{/if}
 
-						<!-- Add section button with dropdown -->
-						<div class="relative">
-							<button
-								class="flex items-center gap-2 rounded-md border border-blue-500 px-2 py-1 text-blue-500 hover:bg-blue-50"
-								on:click|preventDefault={() => (showSectionDropdown = !showSectionDropdown)}
-							>
-								<span>Thêm phần</span>
-								<ChevronDown class="h-4 w-4" />
-							</button>
-
-							{#if showSectionDropdown}
-								<div
-									class="absolute left-0 top-full z-10 mt-1 w-48 rounded-md border bg-white shadow-lg"
-									use:clickOutside
-								>
-									{#each sectionTypes as { type, label }}
-										<button
-											class="w-full px-4 py-2 text-left hover:bg-gray-100"
-											on:click={() => addSection(type)}
-										>
-											{label}
-										</button>
-									{/each}
-								</div>
-							{/if}
+						<!-- Replace the current Add Section dropdown with this fixed toolbar -->
+						<div
+							class=" absolute bottom-0 left-0 flex w-full items-center justify-center rounded-md border bg-white p-2 shadow-sm"
+						>
+							<span class="mr-4 text-sm font-medium text-slate-600">Thêm phần:</span>
+							<div class="flex flex-wrap gap-2">
+								{#each sectionTypes as { type, label }}
+									<button
+										class="flex flex-col items-center rounded-md p-2 hover:bg-slate-100"
+										title={label}
+										on:click={() => addSection(type)}
+									>
+										{#if type === 'paragraph'}
+											<!-- Paragraph icon -->
+											<Pilcrow class=" h-[24px] w-[24px] text-slate-600" />
+										{:else if type === 'header'}
+											<!-- Heading icon for Tiêu đề lớn -->
+											<Heading1 class=" h-[24px] w-[24px] font-bold text-slate-600" />
+										{:else if type === 'subheader'}
+											<!-- Heading icon for Tiêu đề nhỏ (smaller variant) -->
+											<Heading2 class=" h-[24px] w-[24px] font-light text-slate-600" />
+										{:else if type === 'bulletList'}
+											<!-- List icon -->
+											<List class=" h-[24px] w-[24px] text-slate-600" />
+										{:else if type === 'image'}
+											<!-- Image icon -->
+											<Image class=" h-[24px] w-[24px] text-slate-600" />
+										{:else if type === 'space'}
+											<!-- Space icon -->
+											<Space class=" h-[24px] w-[24px] text-slate-600" />
+										{/if}
+										<span class="mt-1 text-xs">{label}</span>
+									</button>
+								{/each}
+							</div>
 						</div>
 					</div>
 				</div>
-				<div class="mt-2 flex justify-end">
-					<button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-white"
-						>Đăng bài viết</button
+				<div class="mt-10 flex justify-end">
+					<button on:click={async () => await handleSubmit()} class="rounded-md bg-blue-500 px-4 py-2 text-white"
+						>{$state.id ? 'Cập nhật bài viết' : 'Đăng bài viết'}</button
 					>
 				</div>
-			</form>
+			</div>
 		</Dialog.Content>
 	</Dialog.Root>
+
+	{#if showSectionDropdown}
+		<div
+			class="fixed z-50 mt-1 w-48 rounded-md border bg-white shadow-lg"
+			style="left: {insertAtIndex >= 0 ? '40px' : 'auto'}; top: {(() => {
+				if (insertAtIndex >= 0) {
+					const el = document.querySelector(`[data-section-index="${insertAtIndex - 1}"]`);
+					if (el) {
+						return `${el.getBoundingClientRect().bottom + window.scrollY}px`;
+					}
+					return '100px';
+				}
+				return 'auto';
+			})()}"
+			use:clickOutside
+		>
+			{#each sectionTypes as { type, label }}
+				<button
+					class="w-full px-4 py-2 text-left hover:bg-gray-100"
+					on:click={() => addSection(type)}
+				>
+					{label}
+				</button>
+			{/each}
+		</div>
+	{/if}
 </div>

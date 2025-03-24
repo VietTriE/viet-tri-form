@@ -10,12 +10,12 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { writable } from 'svelte/store';
 	import type { Info, Product } from '$lib/types.js';
+	import { onMount } from 'svelte';
 
 	export let data: PageData;
 
-	let password = '';
 	let dialogOpen = false;
-	let currentCategoryId: string = '';
+	let currentCategoryId: string = data.categories[0]; // Set to first category by default
 	let inputImage: HTMLInputElement;
 	let inputPhotos: HTMLInputElement;
 	let standardProduct = true;
@@ -40,6 +40,12 @@
 	};
 	let subCategory = 'elite';
 	let isPosting = false;
+	let activeTab: string = data.categories[0]; // Default to first category
+	let mounted = false;
+
+	onMount(() => {
+		mounted = true;
+	});
 
 	function createProductSection() {
 		const state = writable<Product>({
@@ -58,10 +64,6 @@
 
 		function deleteTrigger(node: HTMLElement) {
 			async function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
 				e.preventDefault();
 				if (!!node.dataset.productid && !!node.dataset.categoryid) {
 					const productItem = data.productsByCategory[node.dataset.categoryid].find(
@@ -76,13 +78,13 @@
 							if (productItem.image) {
 								imageList.push(productItem.image);
 							}
-
+							const authKey = localStorage.getItem('authKey');
 							const res = await fetch(
 								`https://viet_tri_api.mkt-viettri.workers.dev/api/products/${node.dataset.productid}`,
 								{
 									method: 'DELETE',
 									headers: {
-										Authorization: `${password}`
+										Authorization: `${authKey}`
 									}
 								}
 							);
@@ -112,9 +114,73 @@
 		function editTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
 				e.preventDefault();
+				if (!mounted) return; // Don't proceed if component isn't mounted
+				
 				if (!!node.dataset.productid && !!node.dataset.categoryid) {
 					console.log(node.dataset.productid);
 					console.log(node.dataset.categoryid);
+					
+					// First completely reset everything
+					resetState();
+					
+					// Then find the product
+					const productItem = data.productsByCategory[node.dataset.categoryid].find(
+						(product) => product.id === node.dataset.productid
+					);
+					
+					if (productItem) {
+						// Update state with product data
+						state.update(s => ({
+							...productItem
+						}));
+						
+						// Set UI state
+						currentCategoryId = productItem.categoryId;
+						dialogOpen = true;
+						
+						// Handle thumbnail
+						if (productItem.image) {
+							const fileKey = productItem.image.split('/').pop() || '';
+							thumbnailList = {
+								[fileKey]: { 
+									url: productItem.image, 
+									state: 'url' 
+								}
+							};
+						}
+						
+						// Handle reference images
+						if (productItem.refImages && productItem.refImages.length > 0) {
+							const images: Record<string, { url: string; state: string }> = {};
+							productItem.refImages.forEach(img => {
+								const key = img.split('/').pop() || '';
+								images[key] = {
+									url: img,
+									state: 'url'
+								};
+							});
+							photosList = images;
+						}
+						
+						// Handle other properties
+						standardProduct = productItem.standard === 1;
+						if (productItem.sale && productItem.sale.type === 'percent') {
+							salesAmount = productItem.sale.percent;
+						}
+						
+						// Handle elevator info
+						if (productItem.info) {
+							elevatorInfo = {
+								...elevatorInfo,
+								...productItem.info
+							};
+						}
+						
+						// Handle subcategory if applicable
+						if (productItem.subCategory) {
+							subCategory = productItem.subCategory;
+						}
+					}
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -127,14 +193,49 @@
 
 		function createPostTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
 				e.preventDefault();
 				if (!!node.dataset.categoryid) {
-					dialogOpen = true;
+					// First reset product data using proper store method
+					state.set({
+						id: '',
+						name: '',
+						image: '',
+						price: 0,
+						categoryId: '',
+						createdAt: 0,
+						editedAt: 0,
+						standard: 0,
+						refImages: [],
+						info: {},
+						techInfo: {}
+					});
+					
+					// Then reset other form state
+					photosList = {};
+					thumbnailList = {};
+					standardProduct = true;
+					salesAmount = 0;
+					elevatorInfo = {
+						ceiling: '',
+						frontWall: '',
+						sideWall: '',
+						backWall: '',
+						handrail: '',
+						cabinDoor: '',
+						lobby: '',
+						floors: '',
+						gfnf: '',
+						cabinFloor: '',
+						cabinDoorType: '',
+						floorDoor: '',
+						protectionRail: '',
+						bollard: ''
+					};
+					isPosting = false;
+					
+					// Finally set dialog state
 					currentCategoryId = node.dataset.categoryid;
+					dialogOpen = true;
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -299,7 +400,10 @@
 
 	async function handleSubmit() {
 		if ($state.name) {
-			$state.id = $state.name;
+			// Only set ID for new products
+			if (!$state.id) {
+				$state.id = $state.name;
+			}
 		}
 		if (Object.keys(thumbnailList).length > 0) {
 			const imageName = Object.keys(thumbnailList)[0];
@@ -331,25 +435,49 @@
 			$state.refImages = [];
 		}
 		$state.info = elevatorInfo;
+		
 		if (!isPosting) {
 			try {
-				$state.createdAt = Date.now();
+				// For new products, set creation time
+				if (!$state.createdAt) {
+					$state.createdAt = Date.now();
+				}
+				// Always update edited time
 				$state.editedAt = Date.now();
+				
 				isPosting = true;
 				const body = { ...$state };
-				const res = await fetch(
-					`https://viet_tri_api.mkt-viettri.workers.dev/api/products/create`,
-					{
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `${password}`
-						},
-						body: JSON.stringify(body)
-					}
-				);
+				const authKey = localStorage.getItem('authKey');
+				
+				// Determine if we're updating an existing product or creating a new one
+				const isUpdate = data.productsByCategory[currentCategoryId].some(product => product.id === $state.id);
+				const endpoint = isUpdate
+					? `https://viet_tri_api.mkt-viettri.workers.dev/api/products/${$state.id}`
+					: `https://viet_tri_api.mkt-viettri.workers.dev/api/products/create`;
+				
+				const method = isUpdate ? 'PUT' : 'POST';
+				
+				const res = await fetch(endpoint, {
+					method,
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `${authKey}`
+					},
+					body: JSON.stringify(body)
+				});
+				
 				if (res.ok) {
-					addProduct(body);
+					if (isUpdate) {
+						// Update existing product in the local data
+						const productIndex = data.productsByCategory[currentCategoryId].findIndex(product => product.id === $state.id);
+						if (productIndex !== -1) {
+							data.productsByCategory[currentCategoryId][productIndex] = body;
+							data.productsByCategory = { ...data.productsByCategory };
+						}
+					} else {
+						// Add new product
+						addProduct(body);
+					}
 					resetState();
 				} else {
 					const existPhotos = [...Object.keys(photosList), ...Object.keys(thumbnailList)];
@@ -371,6 +499,10 @@
 	}
 
 	function resetState() {
+		// Close dialog first
+		dialogOpen = false;
+		
+		// Reset form state
 		$state = {
 			id: '',
 			name: '',
@@ -384,16 +516,13 @@
 			info: {},
 			techInfo: {}
 		};
-		dialogOpen = false;
-		currentCategoryId = '';
-		//@ts-ignore
-		inputImage.value = null;
-		//@ts-ignore
-		inputPhotos.value = null;
-		standardProduct = true;
-		salesAmount = 0;
+		
+		// Reset UI state
+		currentCategoryId = activeTab; // Set to active tab by default
 		photosList = {};
 		thumbnailList = {};
+		standardProduct = true;
+		salesAmount = 0;
 		elevatorInfo = {
 			ceiling: '',
 			frontWall: '',
@@ -434,59 +563,73 @@
 </script>
 
 <div class="container mx-auto px-4 py-8">
-	<div class="flex items-center space-x-2 py-2">
-		<span class=" font-medium text-slate-500">Nhập key :</span>
-		<input class="rounded-md border px-2 py-1 outline-none" type="password" bind:value={password} />
-	</div>
-	{#each data.categories as categoryId}
-		<section class="mb-12">
-			<div class="flex items-start space-x-4">
-				<h2 class="mb-6 text-2xl font-bold capitalize">
-					{formatCategoryName(categoryId)}
-				</h2>
-				<div
-					use:createPostTrigger
-					data-categoryid={categoryId}
-					class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
+
+	<!-- Create a tab navigation -->
+	<div class="mb-6 border-b">
+		<div class="flex flex-wrap -mb-px">
+			{#each data.categories as categoryId}
+				<button 
+					class="px-4 py-2 font-medium text-md border-b-2 transition-colors duration-200 {activeTab === categoryId ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+					on:click={() => activeTab = categoryId}
 				>
-					<CirclePlus class="h-6 w-6" />
-					<span class="font-semibold">THÊM SẢN PHẨM</span>
-				</div>
-			</div>
-			<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-				{#each data.productsByCategory[categoryId] || [] as product (product.id)}
+					{formatCategoryName(categoryId)}
+				</button>
+			{/each}
+		</div>
+	</div>
+	
+	<!-- Display only the active tab content -->
+	{#each data.categories as categoryId}
+		{#if activeTab === categoryId}
+			<section class="mb-12 mt-12">
+				<div class="flex justify-between items-center space-x-4 w-full">
+					<h2 class="mb-6 text-3xl font-bold capitalize">
+						{formatCategoryName(categoryId)}
+					</h2>
 					<div
-						class="relative flex items-center overflow-hidden rounded-lg border bg-white shadow-md"
+						use:createPostTrigger
+						data-categoryid={categoryId}
+						class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
 					>
-						<div class="absolute right-0 top-0 flex items-center gap-1">
-							<div
-								use:editTrigger
-								data-productid={product.id}
-								data-categoryid={product.categoryId}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Pencil class="h-6 w-6 text-slate-600" />
-							</div>
-							<div
-								use:deleteTrigger
-								data-productid={product.id}
-								data-categoryid={product.categoryId}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Trash2 class="h-6 w-6 text-slate-600" />
-							</div>
-						</div>
-						<img class="h-48 object-cover p-1" src={product.image} alt={product.id} />
-						<h1 class=" w-full text-center text-lg font-semibold text-slate-700">{product.name}</h1>
+						<CirclePlus class="h-6 w-6" />
+						<span class="font-semibold">THÊM SẢN PHẨM</span>
 					</div>
-				{/each}
-			</div>
-		</section>
+				</div>
+				<div class="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+					{#each data.productsByCategory[categoryId] || [] as product (product.id)}
+						<div
+							class="relative flex items-center overflow-hidden rounded-lg border bg-white shadow-md"
+						>
+							<div class="absolute right-0 top-0 flex items-center gap-1">
+								<div
+									use:editTrigger
+									data-productid={product.id}
+									data-categoryid={product.categoryId}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Pencil class="h-6 w-6 text-slate-600" />
+								</div>
+								<div
+									use:deleteTrigger
+									data-productid={product.id}
+									data-categoryid={product.categoryId}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Trash2 class="h-6 w-6 text-slate-600" />
+								</div>
+							</div>
+							<img class="h-48 object-cover p-1" src={product.image} alt={product.id} />
+							<h1 class=" w-full text-center text-lg font-semibold text-slate-700">{product.name}</h1>
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/if}
 	{/each}
 	<Dialog.Root bind:open={dialogOpen}>
-		<Dialog.Content class="max-h-screen overflow-y-scroll ">
+		<Dialog.Content class="h-screen w-full overflow-y-scroll ">
 			<Dialog.Header>
-				<Dialog.Title>THÊM SẢN PHẨM</Dialog.Title>
+				<Dialog.Title>{$state.id ? 'SỬA SẢN PHẨM' : 'THÊM SẢN PHẨM'}</Dialog.Title>
 				<Dialog.Description></Dialog.Description>
 			</Dialog.Header>
 			<form on:submit={async () => await handleSubmit()} action="">
@@ -845,7 +988,7 @@
 				</div>
 				<div class="mt-2 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-white"
-						>Đăng sản phẩm</button
+						>{$state.id ? 'Cập nhật sản phẩm' : 'Đăng sản phẩm'}</button
 					>
 				</div>
 			</form>

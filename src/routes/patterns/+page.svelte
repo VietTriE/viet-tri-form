@@ -10,10 +10,10 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { writable } from 'svelte/store';
 	import Loader from 'lucide-svelte/icons/loader';
+	import { onMount } from 'svelte';
 
 	export let data: PageData;
 
-	let password = '';
 	let dialogOpen = false;
 	let currentCategoryId:
 		| 'cabin'
@@ -26,6 +26,11 @@
 		| 'vatLieu' = 'cabin';
 	let inputImage: HTMLInputElement;
 	let thumbnailList: Record<string, { url: string; state: string }> = {};
+	let activeTab: typeof currentCategoryId = 'cabin'; // Default first
+	// Make sure activeTab gets a valid value
+	if (data.categories.length > 0 && isValidCategoryId(data.categories[0])) {
+		activeTab = data.categories[0] as typeof currentCategoryId;
+	}
 	let elevatorInfo: Info = {
 		ceiling: '',
 		frontWall: '',
@@ -44,6 +49,20 @@
 	};
 	let isPosting = false;
 
+	// Track whether component is mounted
+	let mounted = false;
+	
+	onMount(() => {
+		mounted = true;
+		return () => {
+			mounted = false;
+		};
+	});
+
+	function isValidCategoryId(categoryId: string): categoryId is typeof currentCategoryId {
+		return ['cabin', 'cuaTang', 'sanCabin', 'tranGia', 'tayVin', 'hib', 'hoaVanInox', 'vatLieu'].includes(categoryId);
+	}
+
 	function createPatternSection() {
 		const state = writable<PatternItem>({
 			id: '',
@@ -57,10 +76,6 @@
 
 		function deleteTrigger(node: HTMLElement) {
 			async function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
 				e.preventDefault();
 				if (!!node.dataset.patternid && !!node.dataset.categoryid) {
 					const patternItem = data.patternsByCategory[node.dataset.categoryid].find(
@@ -69,12 +84,13 @@
 					if (patternItem) {
 						try {
 							const existPhoto = patternItem.image.split('/').pop() || '';
+							const authKey = localStorage.getItem('authKey');
 							const res = await fetch(
 								`https://viet_tri_api.mkt-viettri.workers.dev/api/patterns/${node.dataset.patternid}`,
 								{
 									method: 'DELETE',
 									headers: {
-										Authorization: `${password}`
+										Authorization: `${authKey}`
 									}
 								}
 							);
@@ -101,8 +117,51 @@
 		function editTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
 				e.preventDefault();
+				
 				if (!!node.dataset.patternid && !!node.dataset.categoryid) {
-					console.log('Edit pattern:', node.dataset.patternid);
+					// First find the pattern
+					const patternItem = data.patternsByCategory[node.dataset.categoryid].find(
+						(pattern) => pattern.id === node.dataset.patternid
+					);
+					
+					if (patternItem && isValidCategoryId(patternItem.patternId)) {
+						// Close the dialog first if it's open
+						dialogOpen = false;
+						
+						// Use setTimeout to ensure dialog is properly closed before reopening
+						setTimeout(() => {
+							// Handle elevator info
+							elevatorInfo = {
+								...elevatorInfo,
+								...patternItem.info
+							};
+							
+							// Set up thumbnails
+							if (patternItem.image) {
+								const fileKey = patternItem.image.split('/').pop() || '';
+								thumbnailList = {
+									[fileKey]: { 
+										url: patternItem.image, 
+										state: 'url' 
+									}
+								};
+							} else {
+								thumbnailList = {};
+							}
+							
+							// Update state with pattern data
+							state.set({
+								...patternItem
+							});
+							
+							// Set UI state
+							currentCategoryId = patternItem.patternId;
+							isPosting = false;
+							
+							// Open dialog after setting everything up
+							dialogOpen = true;
+						}, 10);
+					}
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -115,22 +174,48 @@
 
 		function createPatternTrigger(node: HTMLElement) {
 			function handleClick(e: Event) {
-				if (!password) {
-					alert('Vui lòng nhập key');
-					return;
-				}
 				e.preventDefault();
-				if (!!node.dataset.categoryid) {
-					dialogOpen = true;
-					currentCategoryId = node.dataset.categoryid as
-						| 'cabin'
-						| 'cuaTang'
-						| 'sanCabin'
-						| 'tranGia'
-						| 'tayVin'
-						| 'hib'
-						| 'hoaVanInox'
-						| 'vatLieu';
+				if (!!node.dataset.categoryid && isValidCategoryId(node.dataset.categoryid)) {
+					// Close dialog first if it's open
+					dialogOpen = false;
+					
+					// Use setTimeout to ensure dialog is properly closed before reopening
+					setTimeout(() => {
+						// Reset state without affecting DOM
+						state.set({
+							id: '',
+							name: '',
+							patternId: 'cabin',
+							image: '',
+							subId: '',
+							sections: [],
+							info: {}
+						});
+						
+						// Reset other form state
+						thumbnailList = {};
+						elevatorInfo = {
+							ceiling: '',
+							frontWall: '',
+							sideWall: '',
+							backWall: '',
+							handrail: '',
+							cabinDoor: '',
+							lobby: '',
+							floors: '',
+							gfnf: '',
+							cabinFloor: '',
+							cabinDoorType: '',
+							floorDoor: '',
+							protectionRail: '',
+							bollard: ''
+						};
+						isPosting = false;
+						
+						// Set category and open dialog
+						currentCategoryId = node.dataset.categoryid as typeof currentCategoryId;
+						dialogOpen = true;
+					}, 10);
 				}
 			}
 			node.addEventListener('click', handleClick);
@@ -244,7 +329,8 @@
 	}
 
 	function resetState() {
-		$state = {
+		// Reset state objects first
+		state.set({
 			id: '',
 			name: '',
 			patternId: 'cabin',
@@ -252,12 +338,8 @@
 			subId: '',
 			sections: [],
 			info: {}
-		};
-
-		dialogOpen = false;
-		currentCategoryId = 'cabin';
-		//@ts-ignore
-		inputImage.value = null;
+		});
+		
 		thumbnailList = {};
 		elevatorInfo = {
 			ceiling: '',
@@ -276,6 +358,15 @@
 			bollard: ''
 		};
 		isPosting = false;
+		
+		// Reset UI state
+		currentCategoryId = 'cabin';
+		
+		// Skip resetting file input - it can cause issues
+		// The file input will be replaced/reset when opened again
+		
+		// Close dialog at the very end
+		dialogOpen = false;
 	}
 
 	async function deleteImage(image: string) {
@@ -294,34 +385,64 @@
 	}
 
 	async function handleSubmit() {
-		if ($state.name) {
-			$state.id = $state.name;
+		const currentState = $state;
+		if (currentState.name) {
+			// Only set ID for new patterns
+			if (!currentState.id) {
+				// Update using the store update method
+				state.update(s => ({
+					...s,
+					id: currentState.name
+				}));
+			}
 		}
-		$state.patternId = currentCategoryId;
-		if (Object.keys(thumbnailList).length > 0) {
-			const imageName = Object.keys(thumbnailList)[0];
-			const url = `https://pub-4076f91e2c23424590fb9b7fe99e41b5.r2.dev/${imageName}`;
-			$state.image = url;
-		}
-		$state.info = elevatorInfo;
+		
+		// Update all state properties at once to avoid multiple updates
+		state.update(s => ({
+			...s,
+			patternId: currentCategoryId,
+			info: elevatorInfo,
+			image: Object.keys(thumbnailList).length > 0 
+				? `https://pub-4076f91e2c23424590fb9b7fe99e41b5.r2.dev/${Object.keys(thumbnailList)[0]}`
+				: s.image
+		}));
+		
 		if (!isPosting) {
 			try {
 				isPosting = true;
-				const body = { ...$state };
-				const res = await fetch(
-					`https://viet_tri_api.mkt-viettri.workers.dev/api/patterns/create`,
-					{
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `${password}`
-						},
-						body: JSON.stringify(body)
-					}
-				);
+				const body = { ...$state }; // Get final state
+				const authKey = localStorage.getItem('authKey');
+				
+				// Determine if we're updating an existing pattern or creating a new one
+				const isUpdate = data.patternsByCategory[currentCategoryId].some(pattern => pattern.id === body.id);
+				const endpoint = isUpdate
+					? `https://viet_tri_api.mkt-viettri.workers.dev/api/patterns/${body.id}`
+					: `https://viet_tri_api.mkt-viettri.workers.dev/api/patterns/create`;
+				
+				const method = isUpdate ? 'PUT' : 'POST';
+				
+				const res = await fetch(endpoint, {
+					method,
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `${authKey}`
+					},
+					body: JSON.stringify(body)
+				});
+				
 				if (res.ok) {
+					if (isUpdate) {
+						// Update existing pattern in the local data
+						const patternIndex = data.patternsByCategory[currentCategoryId].findIndex(pattern => pattern.id === body.id);
+						if (patternIndex !== -1) {
+							data.patternsByCategory[currentCategoryId][patternIndex] = body;
+							data.patternsByCategory = { ...data.patternsByCategory };
+						}
+					} else {
+						// Add new pattern
+						addPattern(body);
+					}
 					resetState();
-					addPattern(body);
 				} else {
 					if (Object.keys(thumbnailList).length > 0) {
 						await Promise.all(Object.keys(thumbnailList).map((key) => deleteImage(key)));
@@ -341,65 +462,81 @@
 </script>
 
 <div class="container mx-auto px-4 py-8">
-	<div class="flex items-center space-x-2 py-2">
-		<span class=" font-medium text-slate-500">Nhập key :</span>
-		<input class="rounded-md border px-2 py-1 outline-none" type="password" bind:value={password} />
-	</div>
-	{#each data.categories as categoryId}
-		<section class="mb-12">
-			<div class="flex items-start space-x-4">
-				<h2 class="mb-6 text-2xl font-bold capitalize">
-					{formatCategoryName(categoryId)}
-				</h2>
-				<div
-					use:createPatternTrigger
-					data-categoryid={categoryId}
-					class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
-				>
-					<CirclePlus class="h-6 w-6" />
-					<span class="font-semibold">THÊM MẪU</span>
-				</div>
-			</div>
-			<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-				{#each data.patternsByCategory[categoryId] || [] as pattern (pattern.id)}
-					<div
-						class="relative flex items-center overflow-hidden rounded-lg border bg-white shadow-md"
+	
+	<!-- Create a tab navigation -->
+	<div class="mb-6 border-b">
+		<div class="flex flex-wrap -mb-px">
+			{#each data.categories as categoryId}
+				{#if isValidCategoryId(categoryId)}
+					<button 
+						class="px-4 py-2 font-medium text-xl border-b-2 transition-colors duration-200 {activeTab === categoryId ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+						on:click={() => activeTab = categoryId}
 					>
-						<div class="absolute right-0 top-0 flex items-center gap-1">
-							<div
-								use:editTrigger
-								data-patternid={pattern.id}
-								data-categoryid={pattern.patternId}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Pencil class="h-6 w-6 text-slate-600" />
-							</div>
-							<div
-								use:deleteTrigger
-								data-patternid={pattern.id}
-								data-categoryid={pattern.patternId}
-								class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
-							>
-								<Trash2 class="h-6 w-6 text-slate-600" />
-							</div>
-						</div>
-						<img class="h-48 object-cover p-1" src={pattern.image} alt={pattern.id} />
-						<h1 class="w-full text-center text-lg font-semibold text-slate-700">{pattern.name}</h1>
+						{formatCategoryName(categoryId)}
+					</button>
+				{/if}
+			{/each}
+		</div>
+	</div>
+	
+	<!-- Display only the active tab content -->
+	{#each data.categories as categoryId}
+		{#if activeTab === categoryId}
+			<section class="mb-12 mt-12">
+				<div class="flex justify-between items-center space-x-4 w-full">
+					<h2 class="mb-6 text-3xl font-bold capitalize">
+						{formatCategoryName(categoryId)}
+					</h2>
+					<div
+						use:createPatternTrigger
+						data-categoryid={categoryId}
+						class="flex items-center gap-2 rounded-md bg-blue-500 px-2 py-1 text-white hover:cursor-pointer"
+					>
+						<CirclePlus class="h-6 w-6" />
+						<span class="font-semibold">THÊM MẪU</span>
 					</div>
-				{/each}
-			</div>
-		</section>
+				</div>
+				<div class=" mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+					{#each data.patternsByCategory[categoryId] || [] as pattern (pattern.id)}
+						<div
+							class="relative flex items-center overflow-hidden rounded-lg border bg-white shadow-md"
+						>
+							<div class="absolute right-0 top-0 flex items-center gap-1">
+								<div
+									use:editTrigger
+									data-patternid={pattern.id}
+									data-categoryid={pattern.patternId}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Pencil class="h-6 w-6 text-slate-600" />
+								</div>
+								<div
+									use:deleteTrigger
+									data-patternid={pattern.id}
+									data-categoryid={pattern.patternId}
+									class="rounded-md border bg-white p-1 hover:cursor-pointer hover:bg-slate-200"
+								>
+									<Trash2 class="h-6 w-6 text-slate-600" />
+								</div>
+							</div>
+							<img class="h-48 object-cover p-1" src={pattern.image} alt={pattern.id} />
+							<h1 class="w-full text-center text-lg font-semibold text-slate-700">{pattern.name}</h1>
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/if}
 	{/each}
 
 	<Dialog.Root bind:open={dialogOpen}>
-		<Dialog.Content class="max-h-screen overflow-y-scroll">
+		<Dialog.Content class="h-screen w-full overflow-y-scroll">
 			<Dialog.Header>
-				<Dialog.Title>THÊM MẪU MỚI</Dialog.Title>
+				<Dialog.Title>{$state.id ? 'SỬA MẪU' : 'THÊM MẪU MỚI'}</Dialog.Title>
 			</Dialog.Header>
 			<form on:submit={async () => await handleSubmit()}>
 				<div class="flex flex-col space-y-2">
 					<div class="flex items-center space-x-2">
-						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Tên mẫu * :</span>
+						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Tên mẫu <strong class="text-red-500 text-xl">*</strong> :</span>
 						<input
 							type="text"
 							bind:value={$state.name}
@@ -410,7 +547,7 @@
 					</div>
 
 					<div class="flex items-center space-x-2">
-						<span class="text-sm font-medium text-slate-500">Hình ảnh * :</span>
+						<span class="text-sm font-medium text-slate-500">Hình ảnh <strong class="text-red-500 text-xl">*</strong> :</span>
 						<input
 							class="hidden"
 							type="file"
@@ -463,7 +600,7 @@
 					</div>
 
 					<div class="flex items-center justify-between space-x-4">
-						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Loại mẫu * :</span>
+						<span class="whitespace-nowrap text-sm font-medium text-slate-500">Loại mẫu <strong class="text-red-500 text-xl">*</strong> :</span>
 						<select
 							bind:value={currentCategoryId}
 							class="block h-[32px] w-full rounded-md border outline-none"
@@ -480,7 +617,7 @@
 					</div>
 					{#if currentCategoryId === 'cabin' || currentCategoryId === 'cuaTang' || currentCategoryId === 'sanCabin'}
 						<div class="flex items-center space-x-2">
-							<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân loại * :</span
+							<span class="whitespace-nowrap text-sm font-medium text-slate-500">Phân loại  :</span
 							>
 							<select
 								bind:value={$state.subId}
@@ -683,7 +820,7 @@
 				</div>
 				<div class="mt-4 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-500 px-4 py-2 text-white">
-						Lưu mẫu
+						{$state.id ? 'Cập nhật mẫu' : 'Lưu mẫu'}
 					</button>
 				</div>
 			</form>
